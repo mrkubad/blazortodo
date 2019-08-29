@@ -1,0 +1,107 @@
+﻿@inject  WebApplication1.Data.WeatherForecastService DatabaseService
+
+<div class="grid-row right-sidebar main-background-color border-color@(Visibility ? " right-sidebar-expanded" : string.Empty)">
+    <div class="right-sidebar-main-part">
+        <PrettyCheckBox Id="@SelectedTaskId" IsReadOnly="false" AdditonalTextAreaClasses="font-weight-bold" OnChange="RefreshTaskState"></PrettyCheckBox>
+        <div class="steps-container">
+            @if(StepsIds != null)
+            {
+                foreach(int StepId in StepsIds)
+                {
+                    <PrettyCheckBox @key="@StepId" Id="@StepId" StepLook="true" OnDelete="OnStepDetele"></PrettyCheckBox>
+                }
+            }
+            <CascadingValue Value="@SelectedTaskId">
+                <PrettyEditbox PlaceholderText="Add step..." SuccesfulTaskAdditionCallback="onStepAdd" StepLook="true"></PrettyEditbox>
+            </CascadingValue>
+        </div>  
+    </div>
+    <div class="buttons-container main-background-color">
+        <div class="font-container" @onclick="CloseButtonClick">
+               <i class="fas fa-chevron-right"></i>
+        </div>
+        <span>@Information</span>
+        <div class="font-container" @onclick="DeleteButtonClick">
+            <i class="fas fa-trash-alt"></i>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private bool Visibility { get; set; }
+    [CascadingParameter]
+    private MainLayout mainLayout { get; set; }
+    [CascadingParameter]
+    private int SelectedTaskId { get; set; }
+
+
+    private string Information { get; set; }
+    // Utworzono pon., 1 cze
+
+    // We need this to know when contents needs change
+    private int PreviousTaskId { get; set; }
+
+    //Contains Ids of Steps
+    private List<int> StepsIds { get; set; }
+
+
+    protected override void OnParametersSet()
+    {
+        if(PreviousTaskId != SelectedTaskId && Visibility && SelectedTaskId >= 0)
+        {
+            RefreshTaskState();
+            GetSteps();
+            PreviousTaskId = SelectedTaskId;
+
+        }
+    }
+
+    private async void CreateMessage(bool TaskState)
+    {
+        Information = TaskState ? "Completed " : "Created ";
+
+        DateTime TaskDateTime = TaskState ? await DatabaseService.GetTaskComplitionDate(SelectedTaskId) : await DatabaseService.GetTaskCreationDate(SelectedTaskId);
+
+        Information += TaskDateTime.ToString("ddd\".\", d MMM");
+
+        this.StateHasChanged(); // Set Information xD
+    }
+
+    private void CloseButtonClick()
+    {
+        mainLayout.HideRightSidebar();
+    }
+
+    private async void DeleteButtonClick()
+    {
+        await DatabaseService.DeleteTask(SelectedTaskId);
+        // Setting Task Id To negative numer tells our task component to invoke OnDelete
+        SelectedTaskId = -33;
+        this.StateHasChanged();
+        mainLayout.HideRightSidebar();
+    }
+
+    private async void RefreshTaskState()
+    {
+        bool TaskState = await DatabaseService.GetTaskState(SelectedTaskId);
+        CreateMessage(TaskState);
+    }
+
+    private async void GetSteps()
+    {
+        StepsIds = await DatabaseService.GetStepsIds(SelectedTaskId);
+    }
+
+    private void OnStepDetele(int StepId)
+    {
+        StepsIds.Remove(StepId);
+    }
+
+    private void onStepAdd(int NewStepId)
+    {
+        StepsIds.Add(NewStepId);
+        this.StateHasChanged();
+    }
+
+}

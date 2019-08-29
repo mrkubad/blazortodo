@@ -1,0 +1,143 @@
+﻿@page "/testy"
+@inject IJSRuntime JsRuntime
+@inject IUriHelper UriHelper
+@using WebApplication1.Data
+@inject WeatherForecastService ForecastService
+@implements IDisposable
+@using WebApplication1.GlobalEventHandler
+@inject GlobalStateChange GlobalStateChange;
+
+@using System.Web
+
+<div class="main-header header-image">
+    <div class="navbar-dark">
+        <div class="navbar-toggler navbar-toggler-icon" @onclick="OnTogglerClick"></div>
+    </div>
+    <input class="main-list-title" type="text" maxlength="100" @ref="ListNameInput" @bind-value="ListName" @bind-value:event="oninput" @onkeyup="e => onKeyPress(e)" @onfocusout="onFocusLost" @onfocusin="SelectContent"/>
+</div>
+<div class="main-tasks-table-container main-background-color">
+    <MainTasksTable ListNumber="@ListNumber" RowClickCallback="onRowClickMethod"></MainTasksTable>
+</div>
+
+@code
+{
+    private ElementRef ListNameInput { get; set; }
+    private int LastNameWidth { get; set; }
+    private bool InitialTitleUpdate { get; set; } = true;
+    private string ListName { get; set; }
+    private int ListNumber;
+
+    protected override void OnInit()
+    {
+        UriHelper.OnLocationChanged += onLocationChange;
+        onLocationChange(null, new LocationChangedEventArgs());
+        UpdateTitle();
+
+    }
+
+    protected override void OnAfterRender()
+    {
+        if (InitialTitleUpdate)
+        {
+            ChangeInputWidth();
+            InitialTitleUpdate = false;
+        }
+        base.OnAfterRender();
+    }
+
+    private async void UpdateTitle()
+    {
+        ListName = await ForecastService.GetListNameFromNumber(ListNumber);
+        this.StateHasChanged();
+    }
+
+    private async void SelectContent()
+    {
+        await JsRuntime.InvokeAsync<object>("SelectElement", ListNameInput);
+    }
+
+    private void onLocationChange(object sender, LocationChangedEventArgs args)
+    {
+
+        Uri uri = new Uri(UriHelper.GetAbsoluteUri());
+
+        var queryKeys = HttpUtility.ParseQueryString(uri.Query);
+
+        GlobalStateChange.InvokeRefreshNewListUrl();
+        if (queryKeys.HasKeys())
+        {
+            InitialTitleUpdate = true;
+            GetParameterValue(queryKeys);
+            UpdateTitle();
+        }
+    }
+
+    private void onFocusLost()
+    {
+        SaveNewListNameToDB();
+    }
+
+    private async void ChangeInputWidth()
+    {
+        LastNameWidth = ListName.Length;
+        await JsRuntime.InvokeAsync<object>("ChangeElementWidth", ListNameInput, LastNameWidth);
+    }
+
+    private async void onKeyPress(UIKeyboardEventArgs args)
+    {
+        if (args.Code == "Enter")
+        {
+            await JsRuntime.InvokeAsync<object>("BlurElement", ListNameInput);
+            SaveNewListNameToDB();
+            ChangeInputWidth();
+        }
+        else
+        {
+            if (LastNameWidth <= ListName.Length)
+            {
+                LastNameWidth = ListName.Length;
+                await JsRuntime.InvokeAsync<object>("ChangeElementWidth", ListNameInput, LastNameWidth);
+            }
+        }
+    }
+
+    private async void SaveNewListNameToDB()
+    {
+        if(!string.IsNullOrWhiteSpace(ListName))
+        {
+            if(ListName.Length > 100)
+            {
+                ListName = ListName.Substring(0, 100);
+            }
+            await ForecastService.SetListNameFromNumber(ListNumber, ListName);
+            GlobalStateChange.InvokeListChangedEvent(this, ListNumber, ListEventType.NameChange); // Refresh right-size panel
+        }
+        else
+        {
+            ListName = await ForecastService.GetListNameFromNumber(ListNumber);
+            this.StateHasChanged();
+            ChangeInputWidth();
+        }
+    }
+
+    private void onRowClickMethod(int TaskId)
+    {
+        GlobalStateChange.InvokeChangeRightSidebarVisibility(TaskId);
+        this.StateHasChanged();
+    }
+
+    private void GetParameterValue(System.Collections.Specialized.NameValueCollection queryKeys)
+    {
+        ListNumber = int.Parse(queryKeys.Get("list"));
+    }
+
+    private void OnTogglerClick()
+    {
+        GlobalStateChange.InvokeChangeLeftSidebarVisibility();
+    }
+
+    public void Dispose()
+    {
+        UriHelper.OnLocationChanged -= onLocationChange;
+    }
+}

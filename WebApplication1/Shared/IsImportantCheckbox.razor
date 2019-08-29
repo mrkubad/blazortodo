@@ -1,0 +1,62 @@
+﻿@inject WebApplication1.Data.WeatherForecastService DataBaseService
+@using WebApplication1.GlobalEventHandler
+
+
+<span class="task-important-button" @onclick="SetImportant">
+    <i class="@(IsImportant ? SolidClass : RegularClass)fa-star fa-lg"></i>
+</span>
+
+@code {
+    private string RegularClass { get; set; } = "far ";
+    private string SolidClass { get; set; } = "fas ";
+    private bool IsImportant { get; set; }
+    private int PreviousTaskId { get; set; }
+    [CascadingParameter]
+    private int TaskId { get; set; }
+    [CascadingParameter] GlobalStateChange GlobalEvents { get; set; }
+    [CascadingParameter(Name = "StateChange")] private bool IsStateChanged { get; set; }
+
+
+
+    //protected override void OnInit()
+    //{
+    //    GlobalEvents.TaskImportanceChanged += InvokeRefresh;
+    //    base.OnInit();
+    //}
+
+    protected override void OnParametersSet()
+    {
+        if(IsStateChanged)
+        {
+            IsStateChanged = false;
+        }
+
+         if (PreviousTaskId != TaskId)
+        {
+            Refresh();
+            PreviousTaskId = TaskId;
+        }
+
+    }
+
+    private void InvokeRefresh(object sender, int TaskId)
+    {
+        if (TaskId == this.TaskId)
+        {
+            Refresh();
+        }
+    }
+
+    private async void Refresh()
+    {
+        IsImportant = await DataBaseService.GetTaskInportance(TaskId);
+        await this.Invoke(this.StateHasChanged);
+    }
+
+    private void SetImportant()
+    {
+        IsImportant = !IsImportant;
+        DataBaseService.UpdateTaskImportance(TaskId, IsImportant);
+        //GlobalEvents.InvokeTaskImportanceChanged(this.TaskId);
+    }
+}

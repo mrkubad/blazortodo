@@ -1,0 +1,180 @@
+@inject IJSRuntime JsRuntime
+@using WebApplication1.Data
+@inject WeatherForecastService ForecastService
+@inject WebApplication1.GlobalEventHandler.GlobalStateChange GlobalStateChange
+@inject IUriHelper UriHelper
+
+<div class="left-sidebar-toggler-container">
+    <div class="navbar-dark">
+        <div class="navbar-toggler navbar-toggler-icon" @onclick="OnTogglerClick"></div>
+    </div>
+</div>
+
+<NavLink href="#" class="nav-link">
+    <img src="img/profile.jpg" alt="JD" class="rounded-circle img-thumbnail">
+    <span class="nav-link-text">Jakub Dedio</span>
+</NavLink>
+
+<hr />
+
+<NavLink class="nav-link" href="fetchdata">
+    <span class="oi oi-star" title="star" aria-hidden="true"></span>
+    <span class="nav-link-text">Importants </span>
+
+</NavLink>
+
+<hr />
+<div style="display: flex; flex-direction: column; flex-grow: 1; overflow-y: auto;">
+    @if (ListsIds != null)
+    {
+        foreach (int ListId in ListsIds)
+        {
+            <NavBarElement @key="ListId" ListNumber="@ListId" OnListDelete="OnListDelete"></NavBarElement>
+        }
+    }
+    @if (NewListCreation)
+    {
+        <div class="nav-listname-input">
+            <i class="fas fa-align-left"></i>
+            <input type="text" @ref="NewListNameInput" @onfocusout="onFocusOut" @bind="@InputValue" @onkeyup="e => onKeyPressed(e)" />
+        </div>
+    }
+    @if (NameIsInUse)
+    {
+        <div class="alert alert-warning" role="alert">
+            The list name that was entered is in use!
+        </div>
+    }
+    <div class="new-list-button position-sticky main-background-color" @onclick="CreateNewList">
+        <i class="fas fa-plus"></i>
+        <span>New List</span>
+    </div>
+</div>
+
+@code
+{
+    private List<int> ListsIds;
+    private bool NewListCreation = false;
+    private bool InputNeedFocus = true;
+    private bool NameIsInUse = false;
+    private string InputValue { get; set; }
+    private ElementRef NewListNameInput;
+
+
+
+    protected override async Task OnInitAsync()
+    {
+        ListsIds = await ForecastService.GetListsIdsFromDb();
+        GlobalStateChange.StateHasChanged += Refresh;
+    }
+
+    protected async override Task OnAfterRenderAsync()
+    {
+        if (NewListCreation && InputNeedFocus)
+        {
+            await JsRuntime.InvokeAsync<object>("ScrollToElement", NewListNameInput);
+            await JsRuntime.InvokeAsync<object>("FocusElementv2", NewListNameInput);
+            InputNeedFocus = false;
+        }
+    }
+
+    private async void Refresh(object sender, EventArgs args)
+    {
+        ListsIds = await ForecastService.GetListsIdsFromDb();
+        await this.Invoke(this.StateHasChanged);
+    }
+
+    private void onKeyPressed(UIKeyboardEventArgs args)
+    {
+        if (args.Code == "Enter")
+        {
+            CreateList();
+        }
+    }
+
+    private void onFocusOut()
+    {
+        if (NewListCreation)
+        {
+            CreateList();
+        }
+    }
+
+    private async void CreateList()
+    {
+
+        if (string.IsNullOrWhiteSpace(InputValue))
+        {
+            return;
+        }
+        if (checkIfExists(InputValue))
+        {
+            NameIsInUse = true;
+            this.StateHasChanged();
+            NewListCreation = true;
+        }
+        else
+        {
+            if (NameIsInUse)
+            {
+                NameIsInUse = false;
+                this.StateHasChanged();
+            }
+            NewListCreation = false;
+            InputNeedFocus = true;
+            await ForecastService.CreateListinDB(InputValue);
+            ListsIds = await ForecastService.GetListsIdsFromDb();
+        }
+
+        this.StateHasChanged();
+    }
+
+    private void CreateNewList()
+    {
+
+        if (NewListCreation) //if trying to create list when creating other
+        {
+            CreateList();
+        }
+        InputValue = "Untitled list";
+        string numberOfUntitled = String.Empty;
+
+        for (int i = 1; checkIfExists(InputValue + numberOfUntitled); ++i)
+        {
+            numberOfUntitled = (" " + i.ToString());
+        }
+        InputValue += numberOfUntitled;
+        NewListCreation = !NewListCreation;
+        this.StateHasChanged();
+    }
+    private bool checkIfExists(string name)
+    {
+        return ForecastService.CheckIfListNameExist(name).Result;
+    }
+
+    private void OnTogglerClick()
+    {
+        GlobalStateChange.InvokeChangeLeftSidebarVisibility();
+    }
+
+    private void OnListDelete(int ListId)
+    {
+        string _activelistid = System.Web.HttpUtility.ParseQueryString(new Uri(UriHelper.GetAbsoluteUri()).Query).Get("list");
+
+        if(int.Parse(_activelistid) == ListId)
+        {
+            int index = ListsIds.IndexOf(ListId);
+            if(index == 0)
+            {
+                UriHelper.NavigateTo("/fetchdata");
+            }
+            else
+            {
+                UriHelper.NavigateTo("/testy?list=" + ListsIds[index - 1].ToString());
+            }
+        }
+        ListsIds.Remove(ListId);
+        this.StateHasChanged();
+    }
+
+}

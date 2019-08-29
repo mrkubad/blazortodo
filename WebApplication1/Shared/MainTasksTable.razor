@@ -1,0 +1,63 @@
+﻿@using  WebApplication1.GlobalEventHandler
+@inject GlobalStateChange GlobalEvents
+@inject WebApplication1.Data.WeatherForecastService DatabaseService
+
+@if (TasksIds != null && TasksIds.Count > 0)
+{
+    foreach (int TaskId in TasksIds)
+    {
+        <CascadingValue Value="RowClickCallback">
+            <PrettyCheckBox @key="TaskId" Id="TaskId" IsReadOnly="true" OnDelete="onTaskDelete" OnChange="onTaskChange"></PrettyCheckBox>
+        </CascadingValue>
+    }
+}
+<CascadingValue Value="ListNumber">
+    <PrettyEditbox PlaceholderText="Add new task ..." SuccesfulTaskAdditionCallback="onTaskAdd"></PrettyEditbox>
+</CascadingValue>
+@code {
+    [Parameter]
+    private int ListNumber { get; set; }
+    [Parameter]
+    private Action<int> RowClickCallback { get; set; }
+    private List<int> TasksIds; // Contains Task Id and Name
+    private int PreviousListNumber { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (TasksIds == null || PreviousListNumber != ListNumber)
+        {
+            GetTasksFromDB();
+            this.PreviousListNumber = ListNumber;
+        }
+    }
+
+    protected async void GetTasksFromDB()
+    {
+        TasksIds = await DatabaseService.GetTasksIdsListContains(ListNumber);
+    }
+
+    private void onTaskAdd(int NewTaskId)
+    {
+        TasksIds.Add(NewTaskId);
+        //Refresh
+        this.StateHasChanged();
+        GlobalEvents.InvokeListChangedEvent(this, ListNumber, ListEventType.TaskLeftNumberChange);
+    }
+    private void onTaskDelete(int DeletedTaskId)
+    {
+        TasksIds.Remove(DeletedTaskId);
+        // Refresh right sidebar
+        GlobalEvents.InvokeStateChange();
+    }
+
+    private void onTaskChange(int TaskId)
+    {
+        GlobalEvents.InvokeListChangedEvent(this, ListNumber, ListEventType.TaskLeftNumberChange);
+    }
+
+    protected void RefreshTable(object sender, bool arg)
+    {
+        GetTasksFromDB();
+        this.StateHasChanged();
+    }
+}

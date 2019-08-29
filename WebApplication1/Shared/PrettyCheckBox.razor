@@ -1,0 +1,235 @@
+@inject WebApplication1.Data.WeatherForecastService DataBaseServices
+@inject IJSRuntime JsRuntime
+@using WebApplication1.GlobalEventHandler
+@inject GlobalStateChange GlobalEvents
+@implements IDisposable
+
+    <div class="main-background-color task-element@(StepLook ? " task-step-looking" : "")">
+        <div class="checkbox-executed@(Checked ? " checked" : "")" @onclick="OnClickCheckbox">
+            <span class="fa-stack">
+                <i class="@(Checked ? FontAwesomeSolidClass : FontAwesomeRegularClass)fa-circle fa-stack-2x"></i>
+                <i class="fas fa-check fa-stack-1x"></i>
+            </span>
+        </div>
+        <div class="task-name-container" @onclick="OnTextAreaClick">
+            <textarea class="reset-input-default-styles task-name@((Checked ? " text-strikethrough" : "") + (AdditonalTextAreaClasses.Length > 0 ? " " + AdditonalTextAreaClasses : ""))" rows="1" maxlength="255" readonly=@IsReadOnly spellcheck="false" @oninput="OnTextAreaInput" @onkeypress="OnTextAreaKeyPress" @onfocusin="OnTextAreaFocusIn" @onfocusout="OnTextAreaFocusOut" @bind="@TaskName" @ref="TextArea"></textarea>
+        </div>
+        @if (!StepLook)
+        {
+            <span class="task-important-button" @onclick="OnImportanceButtonClick">
+                <i class="@(IsImportant ? FontAwesomeSolidClass : FontAwesomeRegularClass)fa-star fa-lg"></i>
+            </span>
+        }
+        else
+        {
+            <i class="fas fa-trash remove-button" @onclick="OnRemoveButtonClick"></i>
+        }
+    </div>
+
+@code {
+
+    [Parameter] private int Id { get; set; }
+    [Parameter] private EventCallback<int> OnDelete { get; set; }
+    [Parameter] private EventCallback<int> OnChange { get; set; }
+    [Parameter] private bool IsReadOnly { get; set; } = true;
+    [Parameter] private bool StepLook { get; set; } = false;
+    [Parameter] private bool SelectAfterClick { get; set; } = false;
+    [Parameter] private string AdditonalTextAreaClasses { get; set; } = string.Empty;
+
+    [CascadingParameter] private Action<int> RowClickEvent { get; set; }
+
+    private bool Checked { get; set; } = false;
+    private bool IsImportant { get; set; } = false;
+    private string FontAwesomeSolidClass { get; set; } = "fas ";
+    private string FontAwesomeRegularClass { get; set; } = "far ";
+    private bool DisabledEnterKeyReaction { get; set; } = false;
+    private ElementRef TextArea { get; set; }
+    private int PreviousId { get; set; }
+    private string TaskName { get; set; } = string.Empty;
+
+    protected override void OnInit()
+    {
+        GlobalEvents.TaskSomethingChanged += InvokeRefreshTask;
+        base.OnInit();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if(PreviousId != Id && Id < -1)
+        {
+            GlobalEvents.InvokeSomethingChangedTask(this, PreviousId, StepLook, TaskEventType.Deletion);
+        }
+    }
+
+    protected async override Task OnAfterRenderAsync()
+    {
+        if(!DisabledEnterKeyReaction && !IsReadOnly)
+        {
+            await JsRuntime.InvokeAsync<object>("DisableEnterKeyEvent", TextArea);
+            DisabledEnterKeyReaction = true;
+        }
+
+        if(PreviousId != Id && Id >= 0)
+        {
+            //we need refresh xD
+            RefreshEntireTaskData();
+            this.StateHasChanged();
+            PreviousId = Id;
+        }
+        // Every time it is rerenering adjust its height
+        OnTextAreaInput();
+    }
+
+    private void RefreshEntireTaskData()
+    {
+        GetTaskNameFromDb();
+        GetExecutionStateFromDb();
+        GetImportantStateFromDb();
+    }
+
+    private async void GetTaskNameFromDb()
+    {
+        TaskName = StepLook ? await DataBaseServices.GetStepName(Id) : await DataBaseServices.GetTaskNameFromId(Id);
+    }
+
+    private async void GetExecutionStateFromDb()
+    {
+        Checked = StepLook ? await DataBaseServices.GetStepExecutionState(Id) : await DataBaseServices.GetTaskState(Id);
+    }
+
+    private async void GetImportantStateFromDb()
+    {
+        if(!StepLook)
+        {
+            IsImportant = await DataBaseServices.GetTaskInportance(Id);
+        }
+    }
+
+    private async void InvokeRefreshTask(object sender, TaskEventArgs args)
+    {
+        if(this.Id == args.TaskId && args.IsStep == StepLook)
+        {
+            if(args.Type == TaskEventType.Deletion)
+            {
+                await OnDelete.InvokeAsync(args.TaskId);
+                return;
+            }
+            if (sender != this)
+            {
+                switch (args.Type)
+                {
+                    case TaskEventType.NameChange:
+                        GetTaskNameFromDb();
+                        break;
+                    case TaskEventType.ExecutionStateChange:
+                        GetExecutionStateFromDb();
+                        break;
+                    case TaskEventType.ImportantStateChange:
+                        GetImportantStateFromDb();
+                        break;
+                }
+            }
+            await this.Invoke(this.StateHasChanged);
+            await OnChange.InvokeAsync(args.TaskId);
+        }
+    }
+
+    private async void OnClickCheckbox()
+    {
+        Checked = !Checked;
+
+        if (StepLook)
+        {
+            await DataBaseServices.UpdateStepExecutionState(this.Id, this.Checked);
+        }
+        else
+        {
+            await DataBaseServices.UpdateTaskState(this.Id, this.Checked);
+        }
+
+        GlobalEvents.InvokeSomethingChangedTask(this, Id, StepLook, TaskEventType.ExecutionStateChange);
+    }
+
+    private async void OnTextAreaInput()
+    {
+        await JsRuntime.InvokeAsync<object>("ResizeTextArea", TextArea);
+    }
+
+    private async void OnTextAreaKeyPress(UIKeyboardEventArgs e)
+    {
+        if(e.Code == "Enter" && !IsReadOnly)
+        {
+            await JsRuntime.InvokeAsync<object>("BlurElement", TextArea);
+        }
+    }
+
+    private async void OnTextAreaFocusOut()
+    {
+        if (!IsReadOnly)
+        {
+            string NewName = TaskName.Trim();
+
+            if (NewName.Length > 255)
+            {
+                NewName = NewName.Substring(0, 255);
+            }
+
+            if (StepLook)
+            {
+                await DataBaseServices.UpdateStepName(Id, NewName);
+            }
+            else
+            {
+                await DataBaseServices.UpdateTaskName(Id, NewName);
+            }
+
+            GlobalEvents.InvokeSomethingChangedTask(this, Id, StepLook, TaskEventType.NameChange);
+        }
+    }
+    private async void OnTextAreaFocusIn()
+    {
+        if (SelectAfterClick && !IsReadOnly)
+        {
+            await JsRuntime.InvokeAsync<object>("SelectElement", TextArea);
+        }
+    }
+
+    private void OnTextAreaClick()
+    {
+        if(IsReadOnly && !StepLook)
+        {
+            RowClickEvent?.Invoke(Id);
+        }
+    }
+
+    private async void OnImportanceButtonClick()
+    {
+        if(!StepLook)
+        {
+            IsImportant = !IsImportant;
+            await DataBaseServices.UpdateTaskImportance(Id, IsImportant);
+            GlobalEvents.InvokeSomethingChangedTask(this, Id, StepLook, TaskEventType.ImportantStateChange);
+        }
+    }
+
+    private async void OnRemoveButtonClick()
+    {
+        if(StepLook)
+        {
+            await DataBaseServices.DeleteStep(Id);
+        }
+        else
+        {
+            await DataBaseServices.DeleteTask(Id);
+        }
+
+        await OnDelete.InvokeAsync(Id);
+
+        GlobalEvents.InvokeSomethingChangedTask(this, Id, StepLook, TaskEventType.Deletion);
+    }
+
+    public void Dispose()
+    {
+        GlobalEvents.TaskSomethingChanged -= InvokeRefreshTask;
+    }
+}

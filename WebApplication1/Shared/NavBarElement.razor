@@ -1,0 +1,85 @@
+@inject WebApplication1.Data.WeatherForecastService DataBaseService;
+@inject IJSRuntime JsRuntime
+@implements IDisposable
+@using  WebApplication1.GlobalEventHandler
+@inject GlobalStateChange GlobalEvents
+
+    <NavLink Match="NavLinkMatch.Prefix" class="nav-link" href="@("testy?list=" + ListNumber.ToString() )">
+        <i class="fas fa-align-left"></i>
+        <span class="nav-link-text">@ListName</span>
+        <span class="task-left-counter">@(LeftTaskNumber > 0 ? LeftTaskNumber.ToString() : "")</span>
+        <i class="fas fa-trash remove-button" @ref="RemoveButton" @onmouseup="OnRemoveClick"></i>
+    </NavLink>
+
+@code {
+    [Parameter] private int ListNumber { get; set; }
+    [Parameter] EventCallback<int> OnListDelete { get; set; }
+
+    private string ListName { get; set; }
+    private int LeftTaskNumber { get; set; }
+    private ElementRef RemoveButton { get; set; }
+    private bool DefaultEventDisabled { get; set; } = false;
+    
+
+    protected override Task OnInitAsync()
+    {
+        // Fresh init
+        GetAllDataFromDb();
+        // Subscibe to Events
+        GlobalEvents.ListSomethingChanged += RefreshData;
+        return base.OnInitAsync();
+    }
+    private void RefreshData(object sender, ListEventArgs args)
+    {
+        if(ListNumber == args.ListId)
+        {
+            if(args.Type == ListEventType.NameChange)
+            {
+                GetListNameFromDb();
+            }
+            else
+            {
+                //So other type is want to refresh left task counter
+                GetLeftTaskNumberFromDb();
+            }
+            this.Invoke(this.StateHasChanged);
+        }
+    }
+
+    private async void GetListNameFromDb()
+    {
+        ListName = await DataBaseService.GetListNameFromNumber(ListNumber);
+    }
+
+    private async void GetLeftTaskNumberFromDb()
+    {
+        LeftTaskNumber = await DataBaseService.GetNumberOfUncompletedTasksFromList(ListNumber);
+    }
+
+    private void GetAllDataFromDb()
+    {
+        GetListNameFromDb();
+        GetLeftTaskNumberFromDb();
+
+    }
+    protected override async Task OnAfterRenderAsync()
+    {
+        if (!DefaultEventDisabled)
+        {
+            await JsRuntime.InvokeAsync<object>("DisableEventPropagation", RemoveButton, "click");
+            await JsRuntime.InvokeAsync<object>("DisableEventForElem", RemoveButton, "click");
+            DefaultEventDisabled = true;
+        }
+    }
+
+    private async void OnRemoveClick()
+    {
+        await DataBaseService.DeleteList(ListNumber);
+        await OnListDelete.InvokeAsync(ListNumber);
+    }
+
+    public void Dispose()
+    {
+        GlobalEvents.ListSomethingChanged -= RefreshData;
+    }
+}

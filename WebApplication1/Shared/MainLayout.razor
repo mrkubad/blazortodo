@@ -1,0 +1,107 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject WebApplication1.GlobalEventHandler.GlobalStateChange GlobalEvents
+
+<div class="grid-container main-background-color@(RightSidebarVisible ? string.Empty : " hide-right")">
+
+    <nav class="grid-row left-sidebar main-background-color@(LeftSidebarVisible ? " left-sidebar-expanded" : string.Empty)">
+        <NavMenuJakub></NavMenuJakub>
+    </nav>
+    <div class="grid-row main-content">
+        @Body
+    </div>
+    <CascadingValue Value="RightSidebarVisible">
+        <CascadingValue Value="this">
+            <CascadingValue Value="ClickedTaskId">
+                <RightSidebar></RightSidebar>
+            </CascadingValue>
+        </CascadingValue>
+    </CascadingValue>
+</div>
+
+@code
+{
+    private bool LeftSidebarVisible = true;
+    private bool RightSidebarVisible = false;
+    private int ClickedTaskId = -1;
+
+    protected override void OnInit()
+    {
+        GlobalEvents.ChangeRightSidebarVisibility += this.ChangeRightSidebarVisibility;
+        GlobalEvents.ChangeLeftSidebarVisibility += this.ChangeLeftSidebarVisibility;
+        base.OnInit();
+    }
+
+
+    protected async override Task OnAfterRenderAsync()
+    {
+        Microsoft.JSInterop.JSRuntime.SetCurrentJSRuntime(JSRuntime);
+        await JSRuntime.InvokeAsync<object>("InitObjectRef", DotNetObjectRef.Create(this));
+    }
+
+    private void ChangeRightSidebarVisibility(object sender, int ClickedTaskId)
+    {
+        //if (RightSidebarVisible)
+        //{
+        //HideRightSidebar();
+        //}
+        // else
+        //{
+        this.ClickedTaskId = ClickedTaskId;
+        ShowRightSidebar();
+        //}
+    }
+
+
+    private void ChangeLeftSidebarVisibility(object sender, bool e)
+    {
+        if(LeftSidebarVisible)
+        {
+            HideLeftSidebar();
+        }
+        else
+        {
+            ShowLeftSidebar();
+        }
+    }
+
+    //private void InvokeShowRightSidebarMethod(object sender, EventArgs e)
+    //{
+    //   ShowRightSidebar();
+    //}
+
+    [JSInvokable]
+    public void HideLeftSidebar()
+    {
+        LeftSidebarVisible = false;
+        Refresh();
+    }
+
+    [JSInvokable]
+    public void HideRightSidebar()
+    {
+        RightSidebarVisible = false;
+        ClickedTaskId = -1;
+        Refresh();
+    }
+
+    public void ShowRightSidebar()
+    {
+        RightSidebarVisible = true;
+        Refresh();
+    }
+
+    public void ShowLeftSidebar()
+    {
+        LeftSidebarVisible = true;
+        Refresh();
+    }
+
+    public void Refresh()
+    {
+        this.Invoke(this.StateHasChanged);
+    }
+
+
+
+}

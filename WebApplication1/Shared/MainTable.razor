@@ -1,0 +1,90 @@
+@inject WebApplication1.Data.WeatherForecastService DataBaseServices;
+@inject WebApplication1.GlobalEventHandler.GlobalStateChange GlobalState;
+    <div class="table-responsive">
+       <table class="table table-hover main-table">
+           <tbody>
+               @if (Tasks != null)
+               {
+                   foreach(var Task in Tasks)
+                   {
+                       <tr>
+                           <th scope="row" class="main-table-row">
+                               <CascadingValue Value="@OnRowClick">
+                                    <PrettyCheckBox @key="@Task" OnStateChange="@onCheckboxChange" Id="@Task.Item1" TaskName="@Task.Item2"></PrettyCheckBox> 
+                               </CascadingValue>
+                           </th>
+                       </tr>
+                   }
+               }
+           </tbody>
+       </table>
+    </div>
+
+    <div class="new-task-button position-sticky main-background-color">
+        <i class="fas fa-plus fa-lg"></i>
+        <input class="new-task-input" onkeyup="@(e => { if (e.Code == "Enter") SaveNewTask(); })" @bind-value="NewListName" @bind-value:event="oninput" onfocusout="@SaveNewTask" placeholder="Add new task" type="text" ref="@AddTaskInputElement" />
+
+    </div>
+
+@functions {
+
+    [Parameter]
+    private int ListNumber { get; set; }
+    [Parameter]
+    private Action<int> OnRowClick { get; set; }
+    private List<Tuple<int, string>> Tasks; // Contains Task Id and Name
+    ElementRef AddTaskInputElement;
+    private string NewListName { get; set; }
+    //private string StrikeThroughText { get; set; }
+
+
+    protected override void OnInit()
+    {
+        GlobalState.RefreshMainTable += InvokeRefresh;
+    }
+
+    protected override void OnParametersSet()
+    {
+        GetTasks();
+    }
+
+
+    private async void GetTasks()
+    {
+        Tasks = new List<Tuple<int, string>>(await DataBaseServices.GetTasksFromList(ListNumber));
+    }
+
+
+    private async void SaveNewTask()
+    {
+        if(!string.IsNullOrEmpty(NewListName))
+        {
+            int _insertedTaskId = await DataBaseServices.AddNewTask(ListNumber, NewListName);
+            Tasks.Add(new Tuple<int, string>(_insertedTaskId, NewListName));
+            NewListName = string.Empty;
+            GlobalState.InvokeStateChange();
+            this.StateHasChanged();
+        }
+    }
+
+    private async void onCheckboxChange(Tuple<int, bool> args)
+    {
+        // First item is TaksId and second is state
+        await DataBaseServices.UpdateTaskState(args.Item1, args.Item2);
+
+        GlobalState.InvokeTaskStateChange();
+
+    }
+
+    private void InvokeRefresh(object sender, bool e)
+    {
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        GetTasks();
+        this.StateHasChanged();
+    }
+
+}

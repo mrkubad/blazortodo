@@ -1,0 +1,32 @@
+﻿@inject WebApplication1.Data.WeatherForecastService DatabaseService
+@inject WebApplication1.GlobalEventHandler.GlobalStateChange GlobalEvents
+
+<div class="new-task-button main-background-color position-sticky@(StepLook ? " task-step-looking" : "")">
+    <i class="fas fa-plus fa-lg"></i>
+    <input class="new-task-input" type="text" placeholder="@PlaceholderText" @onkeyup="@(e => { if (e.Code == "Enter") SaveNewTask(); })" @bind-value="NewTaskName" @bind-value:event="oninput" @onfocusout="SaveNewTask" />
+
+</div>
+
+@code {
+    [Parameter] private Action<int> SuccesfulTaskAdditionCallback { get; set; }
+    [Parameter] private bool StepLook { get; set; } = false;
+    [Parameter] private string PlaceholderText { get; set; }
+    [CascadingParameter] private int ListNumber { get; set; }
+
+    private string NewTaskName { get; set; }
+
+    private async void SaveNewTask()
+    {
+        if(!string.IsNullOrEmpty(NewTaskName))
+        {
+            int _insertedTaskId = StepLook ? await DatabaseService.AddNewStep(ListNumber, NewTaskName) : await DatabaseService.AddNewTask(ListNumber, NewTaskName);
+            if(_insertedTaskId > -1)
+            {
+                SuccesfulTaskAdditionCallback?.Invoke(_insertedTaskId);
+                NewTaskName = string.Empty;
+                GlobalEvents.InvokeStateChange(); //refresh rightside sidebar
+                this.StateHasChanged();
+            }
+        }
+    }
+}
